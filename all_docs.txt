@@ -1,0 +1,935 @@
+=== github.com/vertex-language/asm/aarch64 ===
+package aarch64 // import "github.com/vertex-language/asm/aarch64"
+
+const X0 = reg.X0 ...
+const W0 = reg.W0 ...
+const SP = reg.SP ...
+const V0 = reg.V0 ...
+const EQ = operand.EQ ...
+const UXTB = operand.UXTB ...
+const SY = operand.SY ...
+const Armv8A = feature.Armv8A ...
+const FeatFP = feature.FP ...
+const LSL = operand.LSL
+const RelocNone = operand.RelocNone
+var Page = operand.Page ...
+var Baseline = feature.Baseline ...
+var ErrFeature = errors.New("form gated behind an extension not in the module's set") ...
+var FFR = reg.FFR
+type AddrRef = operand.AddrRef
+type AddrRole = operand.AddrRole
+type Barrier = operand.Barrier
+type Binding uint8
+    const Local Binding = iota ...
+type Cond = operand.Cond
+type Error struct{ ... }
+type Extend = operand.Extend
+type Imm = operand.Imm
+type ImmOrRef = any
+type Label = operand.Label
+type Mem = operand.Mem
+    func Mem128[T baseReg](base T) Mem
+    func Mem16[T baseReg](base T) Mem
+    func Mem32[T baseReg](base T) Mem
+    func Mem64[T baseReg](base T) Mem
+    func Mem8[T baseReg](base T) Mem
+    func MemOf[T baseReg](base T) Mem
+type Module struct{ ... }
+    func NewModule(opts ...Option) *Module
+type Option func(*Module)
+    func WithFeatures(s feature.Set) Option
+type Reference struct{ ... }
+type RegSP32 = any
+type RegSP64 = any
+type RelocKind = operand.RelocKind
+    const R_AARCH64_ABS64 RelocKind = iota + 1 ...
+type Section struct{ ... }
+type SectionKind uint8
+    const Text SectionKind = iota ...
+type Set = feature.Set
+type Shift = operand.Shift
+type ShiftOp = operand.ShiftOp
+type SymRef = operand.SymRef
+    func Ref(name string, kind ...RelocKind) SymRef
+type Symbol struct{ ... }
+type SymbolAttr interface{ ... }
+type SymbolType uint8
+    const NoType SymbolType = iota ...
+type TargetOp = any
+type Visibility uint8
+    const DefaultVisibility Visibility = iota ...
+type Width = operand.Width
+=== github.com/vertex-language/asm/aarch64/feature ===
+package feature // import "github.com/vertex-language/asm/aarch64/feature"
+
+Package feature is the AArch64 extension vocabulary and the gating that goes
+with it.
+
+A Set is always closed under requirements. There is no way to build one holding
+SVE2 without SVE, and dropping a feature drops everything that depends on it.
+The closure is computed from the edges in this file; nothing tabulates a closed
+set by hand, because a hand-written closure and a dependency edge disagree
+eventually and the disagreement is silent.
+
+func Decompose(s Set) (l Level, ok bool, extra []Feature)
+type Feature uint8
+    const None Feature = iota ...
+    func All() []Feature
+    func ParseFeature(name string) (Feature, error)
+type Level uint8
+    const LevelNone Level = iota ...
+    func Levels() []Level
+    func ParseLevel(name string) (Level, error)
+type Set struct{ ... }
+    func Baseline() Set
+    func MustParseFeatures(spec string) Set
+    func NewSet(fs ...Feature) Set
+    func ParseFeatures(spec string) (Set, error)
+=== github.com/vertex-language/asm/aarch64/internal/encode ===
+package encode // import "github.com/vertex-language/asm/aarch64/internal/encode"
+
+Package encode turns a resolved form and a set of operand values into one 32-bit
+word and its fixups.
+
+It is a pure function. Nothing here reads a section, a symbol table, or an
+object format: a field whose value is an address that is not yet a number comes
+back as a Fixup and the field is left zero. Which relocation that becomes is the
+platform writer's answer, and the encoder does not know which formats exist.
+
+There are no prefixes and no displacement sizing. Every instruction is one word,
+so the work is bit-field placement, the immediates the architecture computes
+rather than copies, and deciding which of those two a slot is.
+
+const NopWord uint32 = 0xd503201f
+func Encode(set feature.Set, mnem string, ops ...any) (uint32, []Fixup, error)
+func EncodeForm(f *isa.Form, ops []any, opts Opts) (uint32, []Fixup, error)
+func EncodeWith(opts Opts, set feature.Set, mnem string, ops ...any) (uint32, []Fixup, error)
+func FormWidth(f *isa.Form) uint16
+func Nop() uint32
+func NopBytes() []byte
+func Pad(dst []byte, n int) []byte
+type AddressError struct{ ... }
+type BitmaskError struct{ ... }
+type CountError struct{ ... }
+type Fixup struct{ ... }
+type OperandError struct{ ... }
+type Opts struct{ ... }
+type RangeError struct{ ... }
+type RegisterError struct{ ... }
+type UnsupportedError struct{ ... }
+=== github.com/vertex-language/asm/aarch64/internal/isa ===
+package isa // import "github.com/vertex-language/asm/aarch64/internal/isa"
+
+Package isa is the AArch64 instruction table: every declared encoding of every
+mnemonic, its operand classes, its base word, and the feature that gates it.
+
+Resolve matches operand classes to exactly one form. Because the instruction
+width is fixed there is no shortest-form search and no tie to break: a mnemonic
+whose forms could both accept the same operands is a table-time error,
+caught when the table is built rather than answered arbitrarily at encode time.
+That is the whole difference between this package and x86_64's.
+
+var Rd = F(0, 5) ...
+func Gates() []feature.Feature
+func Mnemonics() []string
+type AddrForm uint8
+    const AddrNone AddrForm = iota ...
+type Arg struct{ ... }
+    func ArgOf(r reg.Reg) Arg
+    func ImmArg(v int64) Arg
+    func LabelArg() Arg
+    func MemArg(form AddrForm, accessBits uint16) Arg
+type Attr uint16
+    const AttrSetsFlags Attr = 1 << iota ...
+type Class uint8
+    const ClassNone Class = iota ...
+type Field struct{ ... }
+    func F(lo, width uint8) Field
+    func FSplit(lo0, w0, lo1, w1 uint8) Field
+type FieldPart struct{ ... }
+type Form struct{ ... }
+    func AliasesOf(mnem string) []*Form
+    func All() []*Form
+    func Enabled(s feature.Set) []*Form
+    func Forms(mnem string) []*Form
+    func L(mnem string, word, mask uint32) *Form
+    func Resolve(mnem string, args []Arg, set feature.Set) (*Form, error)
+    func ResolveWord(word uint32) (*Form, bool)
+type FormError struct{ ... }
+type GateError struct{ ... }
+type ImmKind uint8
+    const ImmNone ImmKind = iota ...
+type Role uint8
+    const RoleNone Role = iota ...
+type Slot struct{ ... }
+type UnknownError struct{ ... }
+=== github.com/vertex-language/asm/aarch64/operand ===
+package operand // import "github.com/vertex-language/asm/aarch64/operand"
+
+Package operand is the AArch64 operand set: the values that fill a form's slots,
+before the encoder turns them into bits.
+
+Nothing here knows about the instruction table. An operand states what the
+caller wrote — a register, a constant, an address, a symbol and which half of
+it — and answers only the questions that are properties of the value itself:
+whether a constant is expressible in a field of a given shape, whether an
+addressing mode has an encoding at all. Which form accepts which operand is
+isa/'s question. Placing the bits is encode/'s.
+
+The width predicates live here rather than in encode/ because they are the
+architecture's arithmetic, not the encoder's bookkeeping: whether 0x1ff fits
+ADD's twelve bits is true or false before any form is resolved, and a caller
+building operands at runtime has a reason to ask before it emits.
+
+const HS = CS ...
+const PrfLoad = 0 ...
+const ExtLSL = UXTX
+var NoShift = ShiftOp{ ... }
+func BitmaskEncodable(v uint64, w Width) bool
+func DecodeBitmask(n, immr, imms uint8, w Width) (uint64, bool)
+func EncodeBitmask(v uint64, w Width) (n, immr, imms uint8, ok bool)
+func Fits(v int64, bits uint8, signed bool) bool
+func FitsBranch(delta int64, bits uint8) (imm uint32, ok bool)
+func FitsImm12(v int64) (imm uint16, shift bool, ok bool)
+func FitsImm16Shifted(v uint64, w Width) (imm uint16, hw uint8, ok bool)
+func FitsImm7Scaled(v int64, w Width) (imm uint8, ok bool)
+func FitsImm9(v int64) (imm uint16, ok bool)
+func FitsPage(delta int64) (imm uint32, ok bool)
+func FitsUImm12Scaled(v int64, w Width) (imm uint16, ok bool)
+type AddrForm uint8
+    const AddrNone AddrForm = iota ...
+type AddrRef struct{ ... }
+    func Direct(t Target) AddrRef
+    func GotPage(t Target) AddrRef
+    func GotPageOff(t Target) AddrRef
+    func Page(t Target) AddrRef
+    func PageOff(t Target) AddrRef
+type AddrRole uint8
+    const RoleDirect AddrRole = iota ...
+type Barrier uint8
+    const OSHLD Barrier = 1 ...
+    func LookupBarrier(name string) (Barrier, bool)
+type Cond uint8
+    const EQ Cond = 0 ...
+    func LookupCond(name string) (Cond, bool)
+type Disp struct{ ... }
+type Extend uint8
+    const UXTB Extend = 0 ...
+type ExtendOp struct{ ... }
+    func Extended(op Extend, amount uint8) ExtendOp
+type Imm int64
+type Label string
+type Mem struct{ ... }
+    func Mem128[T baseReg](base T) Mem
+    func Mem16[T baseReg](base T) Mem
+    func Mem32[T baseReg](base T) Mem
+    func Mem64[T baseReg](base T) Mem
+    func Mem8[T baseReg](base T) Mem
+    func MemOf[T baseReg](base T) Mem
+type PrfOp uint8
+    const PLDL1KEEP PrfOp = 0 ...
+    func LookupPrfOp(name string) (PrfOp, bool)
+    func NewPrfOp(typ, level, policy uint8) PrfOp
+type RelocKind uint16
+    const RelocNone RelocKind = 0
+type Shift uint8
+    const LSL Shift = 0 ...
+type ShiftOp struct{ ... }
+    func Shifted(op Shift, amount uint8) ShiftOp
+type SymRef struct{ ... }
+    func Sym(name string, kind ...RelocKind) SymRef
+type Target interface{ ... }
+type Width uint16
+    const WidthNone Width = 0 ...
+=== github.com/vertex-language/asm/aarch64/reg ===
+package reg // import "github.com/vertex-language/asm/aarch64/reg"
+
+Package reg enumerates the AArch64 architectural registers.
+
+Every value here is a physical register. There is no virtual register type and
+no allocator; a register is a number, a width, and a rule about which slots will
+accept it.
+
+The awkward parts of this file are the architecture's, not this package's:
+register number 31 names two different registers depending on the form that
+reads it, the SIMD file is one bank seen at six widths, and SVE's Z registers
+extend the same bank again without being the same registers for any purpose that
+matters here.
+
+const DWARFPC = 32 ...
+const SP Xsp = 31 ...
+const IP0 = X16 ...
+const NZCV = Sys(3<<14 | 3<<11 | 4<<7 | 2<<3 | 0) ...
+func DWARF(r Reg) (int, bool)
+func Name(r Reg) string
+func Overlaps(a, b Reg) bool
+func Scalable(r Reg) bool
+type Arrangement uint8
+    const ArrNone Arrangement = iota ...
+type B uint8
+    const B0 B = 0 ...
+type Class uint8
+    const ClassNone Class = iota ...
+type D uint8
+    const D0 D = 0 ...
+type Elem uint8
+    const ElemNone Elem = iota ...
+type Ffr struct{}
+    var FFR Ffr
+type File uint8
+    const FileNone File = iota ...
+type H uint8
+    const H0 H = 0 ...
+type P uint8
+    const P0 P = 0 ...
+type Q uint8
+    const Q0 Q = 0 ...
+type Reg interface{ ... }
+    func Lookup(name string) (Reg, bool)
+    func Parent(r Reg) (Reg, bool)
+type S uint8
+    const S0 S = 0 ...
+type Saved uint8
+    const Caller Saved = iota ...
+    func Save(r Reg, v Variant) Saved
+type Sys uint16
+    func NewSys(op0, op1, crn, crm, op2 uint8) Sys
+type V uint8
+    const V0 V = 0 ...
+type VLane struct{ ... }
+type Variant uint8
+    const Base Variant = iota ...
+type Vec struct{ ... }
+type W uint8
+    const W0 W = iota ...
+type Wsp uint8
+type X uint8
+    const X0 X = iota ...
+type Xsp uint8
+type Z uint8
+    const Z0 Z = 0 ...
+=== github.com/vertex-language/asm/i386 ===
+package i386 // import "github.com/vertex-language/asm/i386"
+
+Package i386 is an in-memory module of finished Intel386 machine code:
+decided bytes plus the three facts bytes cannot carry — references, symbols,
+and section kinds. It writes no object files and knows no IR.
+
+const EAX = reg.EAX ...
+const ST0 = reg.ST0 ...
+const I386 = feature.I386 ...
+const MMX = feature.MMX ...
+const RefAbs32 = operand.RefAbs32 ...
+var Mem8 = operand.Mem8 ...
+var ErrFeature = errors.New("feature-gated form") ...
+func Imm(n int64) operand.Imm
+func NewFeatureSet(l feature.Level) feature.Set
+func NewLabel(name string) operand.Label
+func Ref(name string, kind RefKind) operand.SymRef
+type Binding uint8
+    const Local Binding = iota ...
+type Error struct{ ... }
+type FeatureSet = feature.Set
+type Module struct{ ... }
+    func NewModule(opts ...Option) *Module
+type Operand = operand.Operand
+type Option func(*Module)
+    func WithFeatures(s feature.Set) Option
+type RefKind = operand.RelocKind
+type Reference struct{ ... }
+type Section struct{ ... }
+type SectionKind uint8
+    const Text SectionKind = iota ...
+type Symbol struct{ ... }
+type SymbolAttr interface{ ... }
+type SymbolType uint8
+    const NoType SymbolType = iota ...
+type Visibility uint8
+    const DefaultVisibility Visibility = iota ...
+=== github.com/vertex-language/asm/i386/feature ===
+package feature // import "github.com/vertex-language/asm/i386/feature"
+
+Package feature is the i386 feature vocabulary: what may be encoded, and under
+which flag.
+
+Two different things live here and are deliberately not flattened together.
+
+A Level is a point on the linear base-CPU ladder — i386, i486, i586, i686. Each
+level contains every instruction of the levels below it, and the instructions
+it adds have no CPUID feature bit because they predate CPUID. There is no way to
+have i686 without i586.
+
+A Feature is an orthogonal extension with a CPUID feature bit of its own.
+Extensions have requirements among themselves (SSE2 needs SSE) but are not a
+line, and they are independent of the level.
+
+This is the model GNU as uses for 32-bit x86 — -march=i686+sse4 — and it is the
+shape of the silicon rather than a choice.
+
+The x86-64 microarchitecture levels are not here. x86-64-v1 is defined as the
+common capability of the AMD K8 and Intel Prescott and includes SCE, the SYSCALL
+extension; v2 requires CMPXCHG16B. The whole series is anchored to the 64-bit
+baseline and has no 32-bit member, so it is rejected rather than approximated.
+See Parse.
+
+const Baseline = I686
+var ErrParse = errors.New("i386 features")
+type Feature uint8
+    const MMX Feature = iota ...
+    func All() []Feature
+    func Requires(f Feature) []Feature
+type Level uint8
+    const I386 Level = iota ...
+    func Levels() []Level
+type Set struct{ ... }
+    func Default() Set
+    func New(l Level) Set
+    func Parse(base Set, s string) (Set, error)
+=== github.com/vertex-language/asm/i386/internal/encode ===
+package encode // import "github.com/vertex-language/asm/i386/internal/encode"
+
+Package encode turns a resolved form and operand values into bytes.
+
+It is a pure function over resolved forms: it takes an *isa.Form and a list of
+operands and returns bytes and fixups. Nothing survives the call. It never sees
+text, never chooses a different instruction, and never reorders anything — the
+form was chosen before it was called, and this package only lays out the fields
+that form declares.
+
+var ErrEncode = errors.New("encode")
+func Nops(n int, s feature.Set) []byte
+type Fixup struct{ ... }
+type FixupKind uint8
+    const FixupLabel FixupKind = iota ...
+type Inst struct{ ... }
+    func Encode(f *isa.Form, ops []operand.Operand) (Inst, error)
+type RangeError struct{ ... }
+=== github.com/vertex-language/asm/i386/internal/isa ===
+package isa // import "github.com/vertex-language/asm/i386/internal/isa"
+
+Package isa is the i386 instruction table: every form, its operand classes,
+its opcode bytes, and the level or extension that gates it.
+
+This is the one table. The typed helpers in the arch root are written against
+it, Emit resolves against it, and any introspection enumerates it — the filter
+and the gate are the same values from the same rows, so a form that can be named
+can be encoded and nothing else can.
+
+isa does not encode. It says which form a mnemonic and a list of operands
+resolve to, and what fields that form has; turning a form plus operand values
+into bytes is encode's job. Nothing here holds an instruction.
+
+const NoExt int8 = -1
+func ImmRange(c Class) (lo, hi int64, ok bool)
+func Mnemonics() []string
+func Resolve(mnemonic string, s feature.Set, ops []operand.Operand) (match []*Form, gated []*Form)
+type Class uint8
+    const ClassNone Class = iota ...
+type Form struct{ ... }
+    func All() []*Form
+    func Enabled(mnemonic string, s feature.Set) []*Form
+    func Forms(mnemonic string) []*Form
+type Op struct{ ... }
+type Slot uint8
+    const SlotNone Slot = iota ...
+=== github.com/vertex-language/asm/i386/operand ===
+package operand // import "github.com/vertex-language/asm/i386/operand"
+
+Package operand is the i386 operand vocabulary: immediates, memory operands,
+labels, and symbol references.
+
+It imports reg and nothing else. Everything above — the table, the encoder, the
+root — speaks these types. The reference-kind values are defined here because
+this is the lowest package that must carry them; the root aliases the type,
+so there is one list and no conversion anywhere in the tree.
+
+var ErrOperand = errors.New("operand")
+type Imm struct{ ... }
+    func NewImm(v int64) Imm
+type Label struct{ ... }
+    func NewLabel(name string) Label
+type M128 struct{ ... }
+    func Abs128(sym SymRef) M128
+    func Addr128(a int32) M128
+    func Mem128(base reg.R32) M128
+type M16 struct{ ... }
+    func Abs16(sym SymRef) M16
+    func Addr16(a int32) M16
+    func Mem16(base reg.R32) M16
+type M256 struct{ ... }
+    func Abs256(sym SymRef) M256
+    func Addr256(a int32) M256
+    func Mem256(base reg.R32) M256
+type M32 struct{ ... }
+    func Abs32(sym SymRef) M32
+    func Addr32(a int32) M32
+    func Mem32(base reg.R32) M32
+type M512 struct{ ... }
+    func Abs512(sym SymRef) M512
+    func Addr512(a int32) M512
+    func Mem512(base reg.R32) M512
+type M64 struct{ ... }
+    func Abs64(sym SymRef) M64
+    func Addr64(a int32) M64
+    func Mem64(base reg.R32) M64
+type M8 struct{ ... }
+    func Abs8(sym SymRef) M8
+    func Addr8(a int32) M8
+    func Mem8(base reg.R32) M8
+type M80 struct{ ... }
+    func Abs80(sym SymRef) M80
+    func Addr80(a int32) M80
+    func Mem80(base reg.R32) M80
+type Memory interface{ ... }
+type Operand = reg.Value
+type RM128 interface{ ... }
+type RM16 interface{ ... }
+type RM32 interface{ ... }
+type RM64 interface{ ... }
+type RM8 interface{ ... }
+type RelocKind uint8
+    const RefAbs32 RelocKind = 1 + iota ...
+type SymRef struct{ ... }
+    func Ref(name string, kind RelocKind) SymRef
+=== github.com/vertex-language/asm/i386/reg ===
+package reg // import "github.com/vertex-language/asm/i386/reg"
+
+Package reg is the i386 register file.
+
+Every register here is a physical, architectural register of the Intel386
+architecture. There are no virtual registers and no relation to any other arch
+package: i386.EAX and x86_64.EAX are different registers that share a spelling.
+
+Three numberings appear in this package and they are not the same thing:
+
+  - Num is the encoding number: the 0-7 value carried by the ModRM reg or r/m
+    field, or added to an opcode byte by a +rb/+rw/+rd form. It is the ordinal
+    of the constant, so EAX is 0 and EDI is 7.
+  - DWARF is the number assigned by Intel386 psABI v1.1, Table 2.14. It exists
+    only for the registers that table names; byte and word registers have none.
+  - Name is the psABI's own spelling, bare. Sigils and alternate spellings are a
+    dialect's business and live in i386/text.
+
+type Class uint8
+    const ClassGP Class = iota ...
+type Cr uint8
+    const CR0 Cr = iota ...
+type Dr uint8
+    const DR0 Dr = iota ...
+type K uint8
+    const K0 K = iota ...
+type Mm uint8
+    const MM0 Mm = iota ...
+type R16 uint8
+    const AX R16 = iota ...
+type R32 uint8
+    const EAX R32 = iota ...
+type R8 uint8
+    const AL R8 = iota ...
+type Reg interface{ ... }
+    func All() []Reg
+type Save uint8
+    const SaveNone Save = iota ...
+type Seal struct{}
+type Sreg uint8
+    const ES Sreg = iota ...
+type St uint8
+    const ST0 St = iota ...
+type Value interface{ ... }
+type Xmm uint8
+    const XMM0 Xmm = iota ...
+type Ymm uint8
+    const YMM0 Ymm = iota ...
+type Zmm uint8
+    const ZMM0 Zmm = iota ...
+=== github.com/vertex-language/asm/x86_64 ===
+package x86_64 // import "github.com/vertex-language/asm/x86_64"
+
+x86_64/alias.go
+
+Re-exports, so a lowering imports one package and every term it needs —
+registers, operand constructors, feature spellings — is spelled x86_64.X.
+The feature constants must all be here: a gating diagnostic's note line prints
+x86_64.V2.Plus(x86_64.AVX512VL), and that has to compile.
+
+x86_64/emit.go
+
+x86_64/error.go
+
+x86_64/helpers_base_gen.go
+
+Code generated from the isa tables by helpergen. DO NOT EDIT.
+
+One method per declared form, named by Form.GoName: the mnemonic, then each
+explicit slot's class. A helper pins its form — MovR64Imm64 is the ten-byte
+imm64 and nothing quietly relaxes it. Fixed operands are in the name, not the
+parameters: AddRAXImm32 leaves no field to put another register in, and passes
+reg.RAX itself so the class check holds.
+
+x86_64/inst.go
+
+The machinery under the typed helpers. The helpers themselves are generated
+(helpers_*_gen.go) from the same table everything else reads; each binds to its
+form by GoName lookup, so appending rows breaks nothing and a removed or renamed
+form panics at the first call, naming the missing form, rather than silently
+binding to the wrong row.
+
+x86_64/module.go
+
+x86_64/ref.go
+
+x86_64/section.go
+
+x86_64/symbol.go
+
+const RAX = reg.RAX ...
+const XMM0 = reg.XMM0 ...
+const K0 = reg.K0 ...
+const V1 = feature.V1 ...
+var Mem8 = operand.Mem8 ...
+var ErrFeature = errors.New("form gated behind an extension not in the module's set") ...
+var Baseline = feature.Baseline
+var Empty = feature.Empty
+var ParseFeatures = feature.ParseFeatures
+func Ref(name string, kind RefKind) operand.SymRef
+type Binding uint8
+    const Local Binding = iota ...
+type Error struct{ ... }
+type FeatureSet = feature.Set
+type KM64 = any
+type Memory = any
+type MmM64 = any
+type Module struct{ ... }
+    func NewModule(opts ...Option) *Module
+type Opt func(*encode.Opts)
+    func Broadcast() Opt
+    func RoundDown() Opt
+    func RoundNearest() Opt
+    func RoundUp() Opt
+    func RoundZero() Opt
+    func SAE() Opt
+    func Zeroing() Opt
+type Option func(*Module)
+    func WithFeatures(s feature.Set) Option
+type RM16 = any
+type RM32 = any
+type RM64 = any
+type RM8 = any
+type RefKind operand.RelocKind
+    const RefNone RefKind = iota ...
+type Reference struct{ ... }
+type Section struct{ ... }
+type SectionKind uint8
+    const Text SectionKind = iota ...
+type Symbol struct{ ... }
+type SymbolAttr interface{ ... }
+type SymbolType uint8
+    const NoType SymbolType = iota ...
+type Visibility uint8
+    const DefaultVisibility Visibility = iota ...
+type XmmM128 = any
+type XmmM32 = any
+type XmmM64 = any
+type YmmM256 = any
+type ZmmM512 = any
+=== github.com/vertex-language/asm/x86_64/feature ===
+package feature // import "github.com/vertex-language/asm/x86_64/feature"
+
+x86_64/feature/feature.go
+
+Package feature is the extension vocabulary this target gates encodings on,
+and the microarchitecture levels that name closed sets of them.
+
+The vocabulary is instruction-set extensions only. The psABI's level
+definitions also list CMOV, CX8, FPU, FXSR, OSFXSR, SCE and OSXSAVE;
+those report CPU identification or that the OS has enabled a state-save area,
+not that an encoding exists. An encoder gates on "may I emit these bytes",
+so they are absent here.
+
+Unratified extensions are absent too, and not declared-and-refused the way an
+unmapped relocation is: a relocation kind that exists in the format but has no
+mapping is a gap, whereas an unratified extension has no bytes to name yet.
+AVX512ER and AVX512PF shipped on Knights Landing only and are gone from every
+current part; they are excluded on the same footing.
+
+x86_64/feature/level.go
+
+x86_64/feature/parse.go
+
+x86_64/feature/set.go
+
+type Feature uint8
+    const MMX Feature = iota + 1 ...
+    const Base Feature = 0
+    func All() []Feature
+    func ParseFeature(s string) (Feature, error)
+type Level uint8
+    const LevelNone Level = iota ...
+type Set struct{ ... }
+    func Baseline() Set
+    func Empty() Set
+    func ParseFeatures(s string) (Set, error)
+=== github.com/vertex-language/asm/x86_64/internal/encode ===
+package encode // import "github.com/vertex-language/asm/x86_64/internal/encode"
+
+x86_64/internal/encode/encode.go
+
+Package encode turns a resolved form and operand values into bytes and fixups.
+It is a pure function: no state, no feature set, no section, no symbol table.
+isa.Resolve has already chosen the form and feature gating has already happened;
+nothing here can reach a different instruction than the one it was handed.
+
+This package imports isa/, operand/ and reg/, and switches on concrete operand
+types. It does not import the root package, which is why it names no relocation
+constants — see fixup.go for what it produces instead.
+
+x86_64/internal/encode/error.go
+
+x86_64/encode/fixup.go
+
+x86_64/internal/encode/imm.go
+
+x86_64/internal/encode/modrm.go
+
+x86_64/internal/encode/nop.go
+
+The multi-byte no-op tables Align pads a code section with.
+
+These are the encodings Intel and AMD both document as the recommended padding,
+and the ones GNU as emits, which matters because the differential suite compares
+padded sections byte for byte. They are not the only legal no-ops and they are
+not chosen for beauty: a decoder walking a padded section has to get the same
+instruction boundaries either tool produces.
+
+x86_64/internal/encode/operand.go
+
+x86_64/internal/encode/prefix.go
+
+x86_64/internal/encode/vex.go
+
+var ErrNoRM = errors.New("form has a ModRM but no r/m operand") ...
+func Args(ops ...any) ([]isa.Arg, error)
+func Nops(n int) []byte
+type CountError struct{ ... }
+type Fixup struct{ ... }
+    func Encode(f *isa.Form, o Opts, ops ...any) ([]byte, []Fixup, error)
+type ImmediateError struct{ ... }
+type ModifierError struct{ ... }
+type OperandError struct{ ... }
+type Opts struct{ ... }
+type RegisterError struct{ ... }
+type RexConflictError struct{ ... }
+type RoundMode uint8
+    const RoundNone RoundMode = iota ...
+type SymImm struct{ ... }
+type Use uint8
+    const UseAbs Use = iota ...
+=== github.com/vertex-language/asm/x86_64/internal/isa ===
+package isa // import "github.com/vertex-language/asm/x86_64/internal/isa"
+
+x86_64/isa/arg.go
+
+x86_64/isa/build.go
+
+The constructors the tables are written in. They exist so a table row reads like
+the manual line it came from and not like a struct literal — a table nobody can
+proofread against the SDM is a table that drifts from it.
+
+x86_64/isa/class.go
+
+x86_64/isa/encoding.go
+
+x86_64/internal/isa/form.go
+
+x86_64/internal/isa/resolve.go
+
+x86_64/internal/isa/slot.go
+
+x86_64/isa/table_avx.go
+
+VEX-encoded forms. The three-operand shape is the point of the encoding: the
+destination is ModRM.reg, the first source is VEX.vvvv, the second is ModRM.rm —
+which is why `vaddps` does not clobber either input and `addps` does. Two rows,
+two encodings, one mnemonic apart.
+
+x86_64/isa/table_avx512.go
+
+EVEX-encoded forms, and the AMX tile forms — which are VEX-encoded despite
+belonging to a later extension, because a tile register is not a vector register
+and needs none of what EVEX adds.
+
+Every EVEX form that takes memory states a tuple: N is a function of the tuple,
+the vector length and EVEX.b, and encode/ computes it. A form with no tuple and
+a memory slot does not survive init.
+
+x86_64/isa/table_base.go
+
+The base 64-bit instruction set: everything long mode gives you before any
+extension. Gated on feature.Base, which every Set contains.
+
+x86_64/isa/table_sse.go
+
+MMX through SSE4.2, and the crypto forms that ride on SSE2. Every form here is
+legacy-encoded: the same opcode under VEX is a different row, in table_avx.go,
+because it is a different encoding and Resolve chooses between them by size.
+
+const NoExt int8 = -1
+func Count() int
+func Mnemonics() []string
+type Arg struct{ ... }
+    func ImmArg(v operand.Imm) Arg
+    func MemArg(m operand.Mem) Arg
+    func RegArg(r reg.Reg) Arg
+    func RelArg() Arg
+    func SymImmArg(w operand.Width) Arg
+type ArgKind uint8
+    const KindReg ArgKind = iota ...
+type Attr uint16
+    const HasModRM Attr = 1 << iota ...
+type Class uint8
+    const ClassNone Class = iota ...
+type Enc uint8
+    const EncLegacy Enc = iota ...
+type Field uint8
+    const InNone Field = iota ...
+type Form struct{ ... }
+    func All() []*Form
+    func E(op string, l VLen, p Pfx, m Map, opcode byte, slots ...Slot) *Form
+    func Enabled(s feature.Set) []*Form
+    func Forms(mnemonic string) []*Form
+    func L(op string, opcode byte, slots ...Slot) *Form
+    func Resolve(s feature.Set, mnemonic string, args ...Arg) (*Form, error)
+    func V(op string, l VLen, p Pfx, m Map, opcode byte, slots ...Slot) *Form
+type FormError struct{ ... }
+type GateError struct{ ... }
+type ImmW uint8
+    const ImmNone ImmW = iota ...
+type Map uint8
+    const Map1 Map = iota ...
+type Pfx uint8
+    const PfxNone Pfx = iota ...
+type Role uint8
+    const Read Role = iota ...
+type Slot struct{ ... }
+    func Imp(c Class, r Role) Slot
+    func S(c Class, r Role, f Field) Slot
+type Tuple uint8
+    const TupleNone Tuple = iota ...
+type UnknownError struct{ ... }
+type VLen uint8
+    const LNone VLen = iota ...
+type WBit uint8
+    const W0 WBit = iota ...
+=== github.com/vertex-language/asm/x86_64/operand ===
+package operand // import "github.com/vertex-language/asm/x86_64/operand"
+
+x86_64/operand/imm.go
+
+x86_64/operand/mem.go
+
+x86_64/operand/mem_width.go
+
+M8 through M512 are memory references with the width fixed in the type,
+so the generated helper layer can reject a width mismatch at compile time
+rather than at Emit. Each is a thin wrapper whose builders return its own type;
+the logic lives once, on Mem.
+
+The repetition is the point. A single type carrying a width field would put the
+check back at run time, which is the thing the typed layer exists to avoid.
+
+x86_64/operand/operand.go
+
+Package operand is the operand set: immediates, memory references, and the
+symbolic targets a fixup can point at.
+
+There is no Operand interface here. Registers live in reg/, this package imports
+reg/, and reg/ implementing an interface declared here would close the cycle.
+The root package imports both and declares the interface; encode/ imports both
+and switches on concrete types.
+
+x86_64/operand/sym.go
+
+var ErrScale = errors.New("scale must be 1, 2, 4 or 8") ...
+type Imm int64
+    func Uimm(v uint64) Imm
+type Label string
+type M128 struct{ ... }
+    func Mem128(base reg.Reg64) M128
+type M16 struct{ ... }
+    func Mem16(base reg.Reg64) M16
+type M256 struct{ ... }
+    func Mem256(base reg.Reg64) M256
+type M32 struct{ ... }
+    func Mem32(base reg.Reg64) M32
+type M512 struct{ ... }
+    func Mem512(base reg.Reg64) M512
+type M64 struct{ ... }
+    func Mem64(base reg.Reg64) M64
+type M8 struct{ ... }
+    func Mem8(base reg.Reg64) M8
+type Mem struct{ ... }
+    func Abs(disp int32) Mem
+    func AbsSym(t Target) Mem
+    func RIPRel(t Target) Mem
+    func RIPRelDisp(disp int32) Mem
+type RelocKind uint16
+    const RelocNone RelocKind = 0
+type SymRef struct{ ... }
+    func Ref(name string, kind RelocKind) SymRef
+type Target interface{ ... }
+type Width int
+    const WidthNone Width = 0 ...
+=== github.com/vertex-language/asm/x86_64/reg ===
+package reg // import "github.com/vertex-language/asm/x86_64/reg"
+
+x86_64/reg/dwarf.go
+
+x86_64/reg/gpr.go
+
+x86_64/reg/name.go
+
+x86_64/reg/save.go
+
+x86_64/reg/sys.go
+
+x86_64/reg/vec.go
+
+x86_64/reg/x87.go
+
+const DWARFrFLAGS = 49 ...
+const RAX = Reg64(0) ...
+const XMM0 = Xmm(0) ...
+const NoDWARF = -1
+const ReturnAddress = 16
+func Overlaps(a, b Reg) bool
+type Class uint8
+    const ClassGP8 Class = iota ...
+type Cr uint8
+    const CR0 Cr = iota ...
+type Dr uint8
+    const DR0 Dr = iota ...
+type File uint8
+    const FileGPR File = iota ...
+type K uint8
+    const K0 K = iota ...
+type Loc struct{ ... }
+type Mm uint8
+    const MM0 Mm = iota ...
+type Platform uint8
+    const ELF Platform = iota ...
+type Preservation uint8
+    const Volatile Preservation = iota ...
+type Reg interface{ ... }
+type Reg16 uint8
+type Reg32 uint8
+type Reg64 uint8
+type Reg8 uint8
+type Sreg uint8
+    const ES Sreg = iota ...
+type St uint8
+    const ST0 St = iota ...
+type Tmm uint8
+    const TMM0 Tmm = iota ...
+type Xmm uint8
+type Ymm uint8
+type Zmm uint8

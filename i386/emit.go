@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vertex-language/asm/i386/encode"
-	"github.com/vertex-language/asm/i386/isa"
+	"github.com/vertex-language/asm/i386/internal/encode"
+	"github.com/vertex-language/asm/i386/internal/isa"
 	"github.com/vertex-language/asm/i386/operand"
 )
 

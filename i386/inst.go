@@ -6,7 +6,7 @@ package i386
 // New tranches (table_sse.go, ...) mean appending methods to this file.
 
 import (
-	"github.com/vertex-language/asm/i386/isa"
+	"github.com/vertex-language/asm/i386/internal/isa"
 	"github.com/vertex-language/asm/i386/operand"
 	"github.com/vertex-language/asm/i386/reg"
 )
